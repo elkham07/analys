@@ -160,3 +160,23 @@ print(step.sort_values('ratio', ascending=False).head(8).to_string(index=False))
 print(step.sort_values('ratio').head(5).to_string(index=False))
 step.to_csv('out_6_step.csv', index=False)
  
+
+mg = ev[ev.sobytie == 'магнит']
+mag_dev = set(mg.anon_id)
+print('\n=== 7. СВЯЗЬ С МАГНИТОМ')
+print('приборов с магнит-событиями:', len(mag_dev), 'из 3000 (', round(len(mag_dev) / 30, 1), '%)')
+flags = pd.DataFrame(index=zero.index)
+flags['magnet'] = flags.index.isin(mag_dev)
+flags['zero30'] = zero >= 30 # type: ignore
+flags['neg'] = flags.index.isin(neg.anon_id)
+flags['spike'] = flags.index.isin(sp.anon_id)
+flags['unreal'] = flags.index.isin(unr_lim.anon_id)
+flags['leak'] = leak_f.reindex(flags.index).fillna(0) >= 30
+flags['step'] = flags.index.isin(step.anon_id)
+flags['step_down'] = flags.index.isin(step[step.ratio <= 1/3].anon_id)
+flags['step_up'] = flags.index.isin(step[step.ratio >= 3].anon_id)
+print('доля приборов с магнитом в группе (vs всего %.1f%%):' % (flags.magnet.mean() * 100))
+for c in ['zero30', 'neg', 'spike', 'unreal', 'leak', 'step', 'step_down', 'step_up']:
+    n = flags[c].sum(); w = flags[flags[c]].magnet.sum()
+    base = flags[~flags[c]].magnet.mean()
+    print(f'  {c:9s}: n={n:4d}, с магнитом {w:4d} ({100*w/max(n,1):.1f}%), без аномалии {100*base:.1f}%')
