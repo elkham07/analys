@@ -32,3 +32,25 @@ res = {}
 def top(df, col, n=10):
     return df.sort_values(col, ascending=False).head(n)
 
+neg = d[d['diff'] < -0.01].copy()
+neg['k327_flag'] = neg['k327']
+neg['reset_to_0'] = neg['pokazanie'] < 1
+s = ev[ev.sobytie == 'сброс'][['anon_id', 'data']].rename(columns={'data': 'd_ev'})
+m = neg.merge(s, on='anon_id', how='left')
+m['near'] = (m['data'] - m['d_ev']).abs().dt.days <= 2
+neg['near_reset_event'] = neg.index.map(m.groupby(m.index)['near'].any()).fillna(False) if False else False
+nr = m.groupby(['anon_id', 'data'])['near'].any()
+neg['near_reset_event'] = [bool(nr.get((a, b), False)) for a, b in zip(neg.anon_id, neg.data)]
+print('\n=== 1. ОТРИЦАТЕЛЬНЫЙ РАСХОД (diff < -0.01 м3; |-0.01..0| = шум float, отброшен)')
+print('событий:', len(neg), ' приборов:', neg.anon_id.nunique())
+print('  из них кратно 327.68 (сбой разряда):', int(neg.k327_flag.sum()), 'событий /', neg[neg.k327_flag].anon_id.nunique(), 'приб.')
+print('  откат после всплеска (возврат):', int(neg.glitch_down.sum()), 'событий /', neg[neg.glitch_down].anon_id.nunique(), 'приб.')
+print('  сброс к ~0 (<1 м3):', int(neg.reset_to_0.sum()), 'событий /', neg[neg.reset_to_0].anon_id.nunique(), 'приб.')
+print('  рядом (±2 дн) с событием "сброс":', int(neg.near_reset_event.sum()), 'событий /', neg[neg.near_reset_event].anon_id.nunique(), 'приб.')
+small = neg[(neg['diff'] > -1)]
+print('  мелкий откат (-1..-0.01 м3):', len(small), 'событий /', small.anon_id.nunique(), 'приб.')
+cnt = neg.groupby('anon_id').size().sort_values(ascending=False)
+print('Топ по числу отрицательных событий:\n', cnt.head(10).to_string())
+print('Топ по глубине падения:\n', neg.nsmallest(8, 'diff')[['anon_id', 'data', 'diff']].to_string(index=False))
+neg.to_csv('out_1_negative.csv', index=False)
+ 
