@@ -79,3 +79,34 @@ mxr = g['pokazanie'].max()
 print('Показание счётчика >10000 м3:', (mxr > 10000).sum(), 'приб ->', mxr[mxr > 10000].round(0).to_dict())
 print('Топ:\n', unr_lim.sort_values('rate', ascending=False).drop_duplicates('anon_id').head(10)[['anon_id', 'data', 'diff', 'pokazanie']].to_string(index=False))
 unr_lim.to_csv('out_3_unreal.csv', index=False)
+
+
+def best_run(vals):
+    b = c = 0
+    for v in vals:
+        c = c + 1 if v else 0
+        b = max(b, c)
+    return b
+ 
+leak = {}; zero = {}; zero_tail = {}
+for a, x in d.groupby('anon_id'):
+    df = x['diff'].values; gp = x['gap'].values; bd = x['bad'].values
+    # непрерывное потребление: подряд суточные приращения >0 (gap==1)
+    leak[a] = best_run((gp == 1) & (df > EPS))
+    # нули: показание не менялось подряд (любой gap, длительность считаем в днях)
+    b = c = 0; dl = x['data'].values; start = None; bestd = 0
+    for i in range(1, len(x)):
+        if abs(df[i]) < EPS:
+            if start is None: start = dl[i - 1]
+            bestd = max(bestd, int((dl[i] - start) / np.timedelta64(1, 'D')))
+        else:
+            start = None
+    zero[a] = bestd
+    # ноль в хвосте периода (сейчас стоит)
+    k = 0
+    for i in range(len(x) - 1, 0, -1):
+        if abs(df[i]) < EPS: k = int((dl[-1] - dl[i - 1]) / np.timedelta64(1, 'D'))
+        else: break
+    zero_tail[a] = k
+leak = pd.Series(leak); zero = pd.Series(zero); zero_tail = pd.Series(zero_tail)
+ 
