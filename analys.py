@@ -11,8 +11,8 @@ ev = ev.drop_duplicates()
 
 d = d.sort_values(['anon_id', 'data']).reset_index(drop=True)
 g = d.groupby('anon_id')
-d['gap'] = g['data'].diff().dt.days                 # дней между показаниями
-d['diff'] = g['pokazanie'].diff().round(6)          # приращение накопительного счётчика
+d['gap'] = g['data'].diff().dt.days                 
+d['diff'] = g['pokazanie'].diff().round(6)          
 d['rate'] = d['diff'] / d['gap']   
 
 lim = pr.set_index('anon_id')['model'].fillna('').map(lambda m: 120 if 'D20' in m else 75)
@@ -20,7 +20,7 @@ d['lim'] = d['anon_id'].map(lim)
 
 
 d['next_diff'] = g['diff'].shift(-1)
-# всплеск, который на следующем отсчёте почти полностью откатился назад
+
 d['glitch_up'] = (d['diff'] > 20) & (d['next_diff'] < -0.8 * d['diff'])
 d['glitch_down'] = d['glitch_up'].shift(1, fill_value=False) & (d['diff'] < 0)
 # скачок, кратный 327.68 (старший бит счётчика)
@@ -54,12 +54,12 @@ print('Топ по числу отрицательных событий:\n', cnt
 print('Топ по глубине падения:\n', neg.nsmallest(8, 'diff')[['anon_id', 'data', 'diff']].to_string(index=False))
 neg.to_csv('out_1_negative.csv', index=False)
  
-ok = d[(d['gap'] == 1) & (d['diff'] >= 0) & ~d['bad']].copy()   # чистые суточные приращения
+ok = d[(d['gap'] == 1) & (d['diff'] >= 0) & ~d['bad']].copy()   
 med = ok[ok['diff'] > EPS].groupby('anon_id')['diff'].median().rename('med_nz')
 ok = ok.merge(med, on='anon_id', how='left')
 ABS = 5.0; REL = 10
 ok['spike_abs'] = ok['diff'] > ABS
-ok['spike_rel'] = (ok['diff'] > REL * ok['med_nz']) & (ok['diff'] > 1.0)   # >=1 м3 чтобы не ловить мелочь
+ok['spike_rel'] = (ok['diff'] > REL * ok['med_nz']) & (ok['diff'] > 1.0)   
 sp = ok[ok.spike_abs | ok.spike_rel]
 print('\n=== 2. ВСПЛЕСКИ (чистые суточные приращения, без сбоев телеметрии)')
 print(f'абсолютный порог >{ABS} м3/сут: дней {ok.spike_abs.sum()}, приборов {ok[ok.spike_abs].anon_id.nunique()}')
@@ -69,7 +69,7 @@ print('Топ:\n', sp.sort_values('diff', ascending=False).drop_duplicates('anon
 sp.to_csv('out_2_spikes.csv', index=False)
 
 real = d[(d['diff'] > 0)]
-unr_lim = real[real['rate'] > real['lim']]                      # выше физического предела прибора
+unr_lim = real[real['rate'] > real['lim']]                      
 unr_50 = real[real['rate'] > 50]
 print('\n=== 3. НЕРЕАЛЬНЫЕ (>предела DN15 ~75 / DN20 ~120 м3/сут; плюс аномальные показания)')
 print('расход выше предела:', len(unr_lim), 'событий /', unr_lim.anon_id.nunique(), 'приб.')
@@ -91,9 +91,9 @@ def best_run(vals):
 leak = {}; zero = {}; zero_tail = {}
 for a, x in d.groupby('anon_id'):
     df = x['diff'].values; gp = x['gap'].values; bd = x['bad'].values
-    # непрерывное потребление: подряд суточные приращения >0 (gap==1)
+    
     leak[a] = best_run((gp == 1) & (df > EPS)) # type: ignore
-    # нули: показание не менялось подряд (любой gap, длительность считаем в днях)
+   
     b = c = 0; dl = x['data'].values; start = None; bestd = 0
     for i in range(1, len(x)):
         if abs(df[i]) < EPS:
@@ -102,7 +102,7 @@ for a, x in d.groupby('anon_id'):
         else:
             start = None
     zero[a] = bestd
-    # ноль в хвосте периода (сейчас стоит)
+
     k = 0
     for i in range(len(x) - 1, 0, -1):
         if abs(df[i]) < EPS: k = int((dl[-1] - dl[i - 1]) / np.timedelta64(1, 'D'))
@@ -196,7 +196,7 @@ es = es[es.before > 0.01]
 es['ratio'] = es.after / es.before
 print(f'\nЕvent-study (14 дн до vs 14 дн после ПЕРВОГО магнита), приборов {len(es)}:')
 print('  медиана отношения после/до =', round(es.ratio.median(), 2), ' доля с падением >50%:', round((es.ratio < 0.5).mean() * 100, 1), '%  с ростом >2x:', round((es.ratio > 2).mean() * 100, 1), '%')
-# плацебо: случайная дата в активный период тех же приборов
+
 rng = np.random.default_rng(0); rows = []
 for a in es.anon_id:
     s = daily.loc[a]
@@ -207,7 +207,7 @@ for a in es.anon_id:
     if len(b) >= 7 and len(af) >= 7 and b.mean() > 0.01: rows.append(af.mean() / b.mean())
 pl = pd.Series(rows)
 print('  плацебо (случайная дата): медиана', round(pl.median(), 2), ' с падением >50%:', round((pl < 0.5).mean() * 100, 1), '%  с ростом >2x:', round((pl > 2).mean() * 100, 1), '%')
-# магнит по типам приборов
+
 pr2 = pr.set_index('anon_id')
 fl = flags.join(pr2[['tip', 'bs', 'model']])
 print('\nДоля приборов с магнитом по типу:'); print(fl.groupby('tip').magnet.agg(['mean', 'size']).round(3).to_string())
@@ -240,7 +240,7 @@ print('f) крупные всплески (>100) по датам:', d[d['diff'] 
 # g) приборы без показаний долго
 last = g['data'].max()
 print('g) приборов с последним показанием раньше 2026-09-01:', (last < '2026-09-01').sum(), ' раньше 2026-07-01:', (last < '2026-07-01').sum())
-# сводный список приоритетов
+
 sc = pd.DataFrame(index=zero.index)
 sc['unreal'] = flags.unreal.astype(int) * 5
 sc['neg_n'] = np.minimum(neg.groupby('anon_id').size().reindex(sc.index).fillna(0), 5)
@@ -253,7 +253,7 @@ print('\nПРИОРИТЕТ НА ПРОВЕРКУ (сумма баллов):')
 print(sc.sort_values('score', ascending=False).head(15).to_string())
 sc.sort_values('score', ascending=False).to_csv('out_priority.csv')
  
-# ================================================================ ДОП. УТОЧНЕНИЯ
+
 print('\n=== 5b. НУЛИ: "новый, не запущенный" vs "встал после потребления"')
 first_r = g['pokazanie'].first(); last_r = g['pokazanie'].last()
 never = (last_r - first_r).abs() < 0.001
