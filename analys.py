@@ -67,3 +67,15 @@ print(f'относительный порог > {REL}x медианы ненул
 print('  оба условия:', ok[ok.spike_abs & ok.spike_rel].anon_id.nunique(), 'приб.')
 print('Топ:\n', sp.sort_values('diff', ascending=False).drop_duplicates('anon_id').head(10)[['anon_id', 'data', 'diff', 'med_nz', 'paketov_za_sutki']].to_string(index=False))
 sp.to_csv('out_2_spikes.csv', index=False)
+
+real = d[(d['diff'] > 0)]
+unr_lim = real[real['rate'] > real['lim']]                      # выше физического предела прибора
+unr_50 = real[real['rate'] > 50]
+print('\n=== 3. НЕРЕАЛЬНЫЕ (>предела DN15 ~75 / DN20 ~120 м3/сут; плюс аномальные показания)')
+print('расход выше предела:', len(unr_lim), 'событий /', unr_lim.anon_id.nunique(), 'приб.')
+print('расход >50 м3/сут:', len(unr_50), 'событий /', unr_50.anon_id.nunique(), 'приб.')
+print('>1000 м3/сут:', (real.rate > 1000).sum(), ' приборов:', real[real.rate > 1000].anon_id.nunique())
+mxr = g['pokazanie'].max()
+print('Показание счётчика >10000 м3:', (mxr > 10000).sum(), 'приб ->', mxr[mxr > 10000].round(0).to_dict())
+print('Топ:\n', unr_lim.sort_values('rate', ascending=False).drop_duplicates('anon_id').head(10)[['anon_id', 'data', 'diff', 'pokazanie']].to_string(index=False))
+unr_lim.to_csv('out_3_unreal.csv', index=False)
