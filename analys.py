@@ -54,3 +54,16 @@ print('Топ по числу отрицательных событий:\n', cnt
 print('Топ по глубине падения:\n', neg.nsmallest(8, 'diff')[['anon_id', 'data', 'diff']].to_string(index=False))
 neg.to_csv('out_1_negative.csv', index=False)
  
+ok = d[(d['gap'] == 1) & (d['diff'] >= 0) & ~d['bad']].copy()   # чистые суточные приращения
+med = ok[ok['diff'] > EPS].groupby('anon_id')['diff'].median().rename('med_nz')
+ok = ok.merge(med, on='anon_id', how='left')
+ABS = 5.0; REL = 10
+ok['spike_abs'] = ok['diff'] > ABS
+ok['spike_rel'] = (ok['diff'] > REL * ok['med_nz']) & (ok['diff'] > 1.0)   # >=1 м3 чтобы не ловить мелочь
+sp = ok[ok.spike_abs | ok.spike_rel]
+print('\n=== 2. ВСПЛЕСКИ (чистые суточные приращения, без сбоев телеметрии)')
+print(f'абсолютный порог >{ABS} м3/сут: дней {ok.spike_abs.sum()}, приборов {ok[ok.spike_abs].anon_id.nunique()}')
+print(f'относительный порог > {REL}x медианы ненулевого дня (и >1 м3): дней {ok.spike_rel.sum()}, приборов {ok[ok.spike_rel].anon_id.nunique()}')
+print('  оба условия:', ok[ok.spike_abs & ok.spike_rel].anon_id.nunique(), 'приб.')
+print('Топ:\n', sp.sort_values('diff', ascending=False).drop_duplicates('anon_id').head(10)[['anon_id', 'data', 'diff', 'med_nz', 'paketov_za_sutki']].to_string(index=False))
+sp.to_csv('out_2_spikes.csv', index=False)
