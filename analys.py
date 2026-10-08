@@ -180,3 +180,37 @@ for c in ['zero30', 'neg', 'spike', 'unreal', 'leak', 'step', 'step_down', 'step
     n = flags[c].sum(); w = flags[flags[c]].magnet.sum()
     base = flags[~flags[c]].magnet.mean()
     print(f'  {c:9s}: n={n:4d}, с магнитом {w:4d} ({100*w/max(n,1):.1f}%), без аномалии {100*base:.1f}%')
+
+
+daily = d[(d['gap'] == 1) & (d['diff'] >= 0) & ~d['bad']].set_index(['anon_id', 'data'])['diff']
+rows = []
+first = mg.groupby('anon_id')['data'].min()
+for a, t in first.items():
+    if a not in daily.index.get_level_values(0): continue
+    s = daily.loc[a] # type: ignore
+    b = s[(s.index >= t - pd.Timedelta(days=14)) & (s.index < t)]
+    af = s[(s.index > t) & (s.index <= t + pd.Timedelta(days=14))]
+    if len(b) >= 7 and len(af) >= 7: rows.append((a, b.mean(), af.mean()))
+es = pd.DataFrame(rows, columns=['anon_id', 'before', 'after'])
+es = es[es.before > 0.01]
+es['ratio'] = es.after / es.before
+print(f'\nЕvent-study (14 дн до vs 14 дн после ПЕРВОГО магнита), приборов {len(es)}:')
+print('  медиана отношения после/до =', round(es.ratio.median(), 2), ' доля с падением >50%:', round((es.ratio < 0.5).mean() * 100, 1), '%  с ростом >2x:', round((es.ratio > 2).mean() * 100, 1), '%')
+# плацебо: случайная дата в активный период тех же приборов
+rng = np.random.default_rng(0); rows = []
+for a in es.anon_id:
+    s = daily.loc[a]
+    if len(s) < 60: continue
+    t = s.index[rng.integers(20, len(s) - 20)]
+    b = s[(s.index >= t - pd.Timedelta(days=14)) & (s.index < t)]
+    af = s[(s.index > t) & (s.index <= t + pd.Timedelta(days=14))]
+    if len(b) >= 7 and len(af) >= 7 and b.mean() > 0.01: rows.append(af.mean() / b.mean())
+pl = pd.Series(rows)
+print('  плацебо (случайная дата): медиана', round(pl.median(), 2), ' с падением >50%:', round((pl < 0.5).mean() * 100, 1), '%  с ростом >2x:', round((pl > 2).mean() * 100, 1), '%')
+# магнит по типам приборов
+pr2 = pr.set_index('anon_id')
+fl = flags.join(pr2[['tip', 'bs', 'model']])
+print('\nДоля приборов с магнитом по типу:'); print(fl.groupby('tip').magnet.agg(['mean', 'size']).round(3).to_string())
+print('по BS:'); print(fl.groupby('bs').magnet.mean().round(3).to_string())
+flags.to_csv('out_7_flags.csv')
+
