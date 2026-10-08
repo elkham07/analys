@@ -111,4 +111,52 @@ for a, x in d.groupby('anon_id'):
 leak = pd.Series(leak); zero = pd.Series(zero); zero_tail = pd.Series(zero_tail)
  
 
+def leak_flat(x):
+    df = x['diff'].values; gp = x['gap'].values; best = 0; cur = []
+    for v, q in zip(df, gp):
+        if q == 1 and v > EPS: cur.append(v)
+        else:
+            if len(cur) >= 30:
+                a = np.array(cur)
+                if a.std() / a.mean() < 0.5 and a.min() > 0.01: best = max(best, len(cur))
+            cur = []
+    if len(cur) >= 30:
+        a = np.array(cur)
+        if a.std() / a.mean() < 0.5 and a.min() > 0.01: best = max(best, len(cur))
+    return best
+leak_f = d[~d.bad].groupby('anon_id').apply(leak_flat)
+print('\n=== 4. УТЕЧКА (непрерывное потребление без нулевых суток)')
+for t in (14, 30, 60, 90): print(f'  серия >= {t} суток подряд без нуля: {(leak >= t).sum()} приб.') # type: ignore
+print('  Критерий итоговый: >=30 подряд И ровный профиль (CV<0.5, min>0.01):', (leak_f >= 30).sum(), 'приб.')
+print('Топ (длина серии):', leak_f.sort_values(ascending=False).head(10).to_dict())
+leak_f[leak_f >= 30].to_csv('out_4_leak.csv', header=['days'])
+ 
+print('\n=== 5. НУЛЕВОЕ потребление (показание не меняется, пакеты идут)')
+for t in (30, 60, 90, 180): print(f'  серия >= {t} суток: {(zero >= t).sum()} приб.') # type: ignore # type: ignore
+print('  из них нули держатся до конца периода (>=30 сут в хвосте):', (zero_tail >= 30).sum(), 'приб.') # type: ignore
+print('Топ:', zero.sort_values(ascending=False).head(10).to_dict())
+pk = d.groupby('anon_id')['paketov_za_sutki'].mean()
+z30 = zero[zero >= 30].index # type: ignore
+print('  среднее пакетов/сут у "нулевых" >=30:', round(pk[z30].mean(), 2), ' у остальных:', round(pk.drop(z30).mean(), 2))
+zero[zero >= 30].to_csv('out_5_zero.csv', header=['days']) # type: ignore
+ 
+
+clean = d[(d['diff'] >= 0) & ~d['bad'] & (d['gap'] == 1)]
+step = []
+for a, x in clean.groupby('anon_id'):
+    if len(x) < 120: continue
+    h = len(x) // 2
+    f, s2 = x.iloc[:h]['diff'], x.iloc[h:]['diff']
+    mf, ms = f.mean(), s2.mean()
+    if max(mf, ms) < 0.3: continue
+    r = (ms + 1e-9) / (mf + 1e-9)
+    mdf, mds = f.median(), s2.median()
+    if r >= 3 and mds > 2 * max(mdf, 0.01) or r <= 1 / 3 and mdf > 2 * max(mds, 0.01):
+        step.append((a, round(mf, 3), round(ms, 3), round(r, 2), x.iloc[h]['data'].date()))
+step = pd.DataFrame(step, columns=['anon_id', 'mean_1half', 'mean_2half', 'ratio', 'split_date'])
+print('\n=== 6. СТУПЕНЬКА (среднесут. расход 2-й половины / 1-й; >=3x или <=1/3, оба по среднему и медиане, >=120 чистых дней)')
+print('вверх:', (step.ratio >= 3).sum(), ' вниз:', (step.ratio <= 1/3).sum())
+print(step.sort_values('ratio', ascending=False).head(8).to_string(index=False))
+print(step.sort_values('ratio').head(5).to_string(index=False))
+step.to_csv('out_6_step.csv', index=False)
  
