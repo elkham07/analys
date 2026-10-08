@@ -214,3 +214,61 @@ print('\nДоля приборов с магнитом по типу:'); print(f
 print('по BS:'); print(fl.groupby('bs').magnet.mean().round(3).to_string())
 flags.to_csv('out_7_flags.csv')
 
+print('\n=== 8. СОБСТВЕННЫЕ НАХОДКИ')
+# a) шаг 327.68
+print('a) скачки, кратные 327.68 м3 (=2^15*0.01):', int(d.k327.sum()), 'событий /', d[d.k327].anon_id.nunique(), 'приб.')
+# b) повторяющиеся откаты "туда-обратно"
+rep = neg.groupby('anon_id').size()
+print('b) приборы с >=5 отрицательными событиями:', (rep >= 5).sum(), rep[rep >= 5].sort_values(ascending=False).head(5).to_dict())
+# c) "сброс" и Холл
+print('c) события сброс/Холл:', ev.groupby('sobytie').anon_id.nunique().to_dict())
+# d) пакеты: 25-27 пакетов/сутки и связь со сбоями
+d['burst'] = d['paketov_za_sutki'] >= 20
+print('d) строки с >=20 пакетов/сут:', int(d.burst.sum()), 'приб.', d[d.burst].anon_id.nunique(),
+      '| доля сбоев в них %.1f%% vs в остальных %.1f%%' % (d[d.burst].bad.mean() * 100, d[~d.burst].bad.mean() * 100))
+# e) сбои по типу прибора и месяцу выпуска
+pr2 = pr.set_index('anon_id')
+badd = d.groupby('anon_id').bad.sum().rename('nbad')
+x = pr2.join(badd).fillna({'nbad': 0})
+print('e) приборов с >=1 сбоем по типу:'); print((x.nbad > 0).groupby(x.tip).agg(['mean', 'sum']).round(3).to_string())
+x['vyp'] = pd.to_datetime(x.mesyac_vypuska, errors='coerce')
+x['vyp_q'] = x['vyp'].dt.to_period('Q').astype(str)
+print('   по кварталу выпуска:'); print((x.nbad > 0).groupby(x.vyp_q).agg(['mean', 'size']).round(3).tail(12).to_string())
+# f) массовая дата 2025-10-17
+dd = d[(d['diff'] > 100) & (d['paketov_za_sutki'] <= 2)]
+print('f) крупные всплески (>100) по датам:', d[d['diff'] > 100].data.value_counts().head(3).to_dict())
+# g) приборы без показаний долго
+last = g['data'].max()
+print('g) приборов с последним показанием раньше 2026-09-01:', (last < '2026-09-01').sum(), ' раньше 2026-07-01:', (last < '2026-07-01').sum())
+# сводный список приоритетов
+sc = pd.DataFrame(index=zero.index)
+sc['unreal'] = flags.unreal.astype(int) * 5
+sc['neg_n'] = np.minimum(neg.groupby('anon_id').size().reindex(sc.index).fillna(0), 5)
+sc['spike'] = flags.spike.astype(int) * 2
+sc['leak'] = flags.leak.astype(int) * 3
+sc['step_up'] = flags.step_up.astype(int) * 2
+sc['magnet_many'] = (mg.groupby('anon_id').size().reindex(sc.index).fillna(0) >= 50).astype(int) * 2
+sc['score'] = sc.sum(axis=1)
+print('\nПРИОРИТЕТ НА ПРОВЕРКУ (сумма баллов):')
+print(sc.sort_values('score', ascending=False).head(15).to_string())
+sc.sort_values('score', ascending=False).to_csv('out_priority.csv')
+ 
+# ================================================================ ДОП. УТОЧНЕНИЯ
+print('\n=== 5b. НУЛИ: "новый, не запущенный" vs "встал после потребления"')
+first_r = g['pokazanie'].first(); last_r = g['pokazanie'].last()
+never = (last_r - first_r).abs() < 0.001
+used_before = d[(d['diff'] > EPS) & ~d['bad']].groupby('anon_id')['diff'].sum()
+used_before = used_before.reindex(zero.index).fillna(0)
+stuck = (zero_tail >= 30) & (used_before > 1.0) # type: ignore
+print('показание не менялось за ВЕСЬ период:', int(never.sum()), 'приб.')
+print('ноль в хвосте >=30 сут, но ранее прибор потреблял >1 м3 (застрявший/пустая квартира):', int(stuck.sum()), 'приб.')
+print('Топ "застрявших" (дней нуля в хвосте):', zero_tail[stuck].sort_values(ascending=False).head(10).to_dict())
+pd.DataFrame({'zero_tail_days': zero_tail[stuck]}).to_csv('out_5b_stuck.csv')
+tipm = pr.set_index('anon_id')['tip']
+print('по типу (zero>=30):', zero[zero >= 30].index.map(tipm).value_counts().to_dict()) # type: ignore
+print('по типу (stuck):', stuck[stuck].index.map(tipm).value_counts().to_dict())
+print('\n=== 4b. утечка строго: >=90 суток подряд И ровный профиль')
+lf90 = leak_f[leak_f >= 90]
+print(len(lf90), 'приб.; по типу:', lf90.index.map(tipm).value_counts().to_dict())
+print('Топ:', lf90.sort_values(ascending=False).head(8).to_dict())
+ 
