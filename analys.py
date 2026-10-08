@@ -14,3 +14,6 @@ g = d.groupby('anon_id')
 d['gap'] = g['data'].diff().dt.days                 # дней между показаниями
 d['diff'] = g['pokazanie'].diff().round(6)          # приращение накопительного счётчика
 d['rate'] = d['diff'] / d['gap']   
+
+lim = pr.set_index('anon_id')['model'].fillna('').map(lambda m: 120 if 'D20' in m else 75)
+d['lim'] = d['anon_id'].map(lim)
