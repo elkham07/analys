@@ -92,7 +92,7 @@ leak = {}; zero = {}; zero_tail = {}
 for a, x in d.groupby('anon_id'):
     df = x['diff'].values; gp = x['gap'].values; bd = x['bad'].values
     # непрерывное потребление: подряд суточные приращения >0 (gap==1)
-    leak[a] = best_run((gp == 1) & (df > EPS))
+    leak[a] = best_run((gp == 1) & (df > EPS)) # type: ignore
     # нули: показание не менялось подряд (любой gap, длительность считаем в днях)
     b = c = 0; dl = x['data'].values; start = None; bestd = 0
     for i in range(1, len(x)):
@@ -109,4 +109,6 @@ for a, x in d.groupby('anon_id'):
         else: break
     zero_tail[a] = k
 leak = pd.Series(leak); zero = pd.Series(zero); zero_tail = pd.Series(zero_tail)
+ 
+
  
